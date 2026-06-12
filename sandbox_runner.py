@@ -3,12 +3,38 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+import json
+from datetime import datetime, timezone
 
 from policy import is_command_allowed
 
 
 DOCKER_IMAGE = "python:3.12-slim"
 
+def write_security_log(result: dict) -> None:
+    """
+    Write one structured JSON log entry per sandbox execution.
+
+    In a real system, these logs could be sent to a SIEM, stored centrally,
+    or monitored for suspicious behavior.
+    """
+
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    log_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "command": result["command"],
+        "allowed": result["allowed"],
+        "policy_reason": result["policy_reason"],
+        "return_code": result["return_code"],
+        "duration_seconds": result["duration_seconds"],
+        "stdout_preview": result["stdout"][:200],
+        "stderr_preview": result["stderr"][:200],
+    }
+
+    with open(log_dir / "sandbox_events.jsonl", "a", encoding="utf-8") as log_file:
+        log_file.write(json.dumps(log_entry) + "\n")
 
 def run_in_sandbox(command: str) -> dict:
     """
@@ -37,6 +63,7 @@ def run_in_sandbox(command: str) -> dict:
     }
 
     if not allowed:
+        write_security_log(result)
         return result
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -86,7 +113,7 @@ def run_in_sandbox(command: str) -> dict:
             result["stderr"] = "Command timed out."
 
         result["duration_seconds"] = round(time.time() - start, 3)
-
+    write_security_log(result)
     return result
 
 
