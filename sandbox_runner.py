@@ -11,6 +11,24 @@ from policy import is_command_allowed
 
 DOCKER_IMAGE = "python:3.12-slim"
 
+def classify_event(result: dict) -> str:
+    """
+    Classify a sandbox execution result into a security event type.
+
+    This makes logs easier to analyze, filter, and monitor.
+    """
+
+    if not result["allowed"]:
+        return "blocked_by_policy"
+
+    if result["return_code"] == -1:
+        return "runtime_timeout"
+
+    if result["return_code"] != 0:
+        return "runtime_error"
+
+    return "allowed_execution"
+
 def write_security_log(result: dict) -> None:
     """
     Write one structured JSON log entry per sandbox execution.
@@ -24,6 +42,7 @@ def write_security_log(result: dict) -> None:
 
     log_entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+	"event_type": classify_event(result),
         "command": result["command"],
         "allowed": result["allowed"],
         "policy_reason": result["policy_reason"],
